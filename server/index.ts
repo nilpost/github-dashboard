@@ -16,6 +16,13 @@ const NODE_ENV = process.env.NODE_ENV || "development";
 
 const app = express();
 
+// Trust the TLS-terminating proxy (Railway / Cloudflare) so that secure
+// session cookies are issued for requests that arrived over HTTPS but reach
+// the app as plain HTTP. Without this, login silently fails in production.
+if (NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
 // Session store
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -49,11 +56,27 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Health check (no auth) — verifies the process is up and the database is
+// reachable. Used by container/orchestrator health checks.
+app.get("/api/health", async (_req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    res.json({ status: "ok", database: "connected", uptime: process.uptime() });
+  } catch (err) {
+    res.status(503).json({ status: "error", database: "unreachable" });
+  }
+});
+
 // API Routes
 registerRoutes(app);
 
 // Serve static files in production
 if (NODE_ENV === "production") {
+  // Unknown API routes must return JSON 404, not the SPA HTML fallback below.
+  app.use("/api", (_req, res) => {
+    res.status(404).json({ error: "Not found" });
+  });
+
   app.use(express.static(path.resolve(__dirname, "../dist/public")));
 
   // Fallback to index.html for SPA routing

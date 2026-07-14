@@ -201,17 +201,23 @@ EOF
 cat /tmp/deployment-plan.txt
 log_success "Deployment plan created"
 
-# Step 9: Create environment template
-log_info "Step 9: Creating environment template..."
+# Step 9: Create environment file
+log_info "Step 9: Creating environment file..."
 
-cat > .env.production.template << EOF
-# GitHub Dashboard - Production Environment
-# Copy this to .env.production and fill in your values
+# Write the real (gitignored) .env.production with a freshly generated secret.
+# Never clobber an existing one, and never write the real secret into the
+# committed template.
+if [ -f ".env.production" ]; then
+    log_warning ".env.production already exists — not overwriting it"
+else
+    cat > .env.production << EOF
+# GitHub Dashboard - Production Environment (gitignored — real secrets)
+# Fill in DATABASE_URL and GITHUB_TOKEN with your real values.
 
 # Database Configuration
 DATABASE_URL=postgresql://user:password@host:5432/github_dashboard
 
-# Session Security
+# Session Security (generated for you)
 SESSION_SECRET=$SESSION_SECRET
 
 # GitHub API
@@ -227,8 +233,9 @@ SYNC_INTERVAL_MINUTES=60
 # Logging
 LOG_LEVEL=info
 EOF
-
-log_success "Environment template created: .env.production.template"
+    log_success "Environment file created: .env.production (gitignored)"
+    log_info "A SESSION_SECRET was generated for you. Fill in DATABASE_URL and GITHUB_TOKEN."
+fi
 
 # Step 10: Create verification checklist
 log_info "Step 10: Creating verification checklist..."

@@ -126,7 +126,7 @@ fi
 
 # Validate environment
 log_info "Validating environment variables..."
-if ! node scripts/validate-env.js; then
+if ! node scripts/validate-env.cjs; then
     log_error "Environment validation failed"
     exit 1
 fi
@@ -280,7 +280,7 @@ ATTEMPT=1
 HEALTHY=false
 
 while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
-    if node scripts/health-check.js; then
+    if node scripts/health-check.cjs; then
         HEALTHY=true
         break
     fi
@@ -337,8 +337,8 @@ echo "📞 Support & Monitoring:"
 echo "   • Railway Logs: railway logs"
 echo "   • Railway Dashboard: https://railway.app/dashboard"
 echo "   • Cloudflare Analytics: https://dash.cloudflare.com"
-echo "   • Health Check: node scripts/health-check.js"
-echo "   • Deployment Status: node scripts/deployment-status.js"
+echo "   • Health Check: node scripts/health-check.cjs"
+echo "   • Deployment Status: node scripts/deployment-status.cjs"
 
 echo ""
 echo "📚 Documentation:"

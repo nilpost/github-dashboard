@@ -32,7 +32,7 @@ Use these for specific tasks or when you need more control.
 Validates all required environment variables:
 
 ```bash
-node scripts/validate-env.js
+node scripts/validate-env.cjs
 ```
 
 **What it does:**
@@ -107,10 +107,10 @@ Verifies deployed application is working:
 
 ```bash
 # For production
-node scripts/health-check.js
+node scripts/health-check.cjs
 
 # For custom URL
-node scripts/health-check.js https://custom-url.com
+node scripts/health-check.cjs https://custom-url.com
 ```
 
 **What it checks:**
@@ -137,7 +137,7 @@ node scripts/health-check.js https://custom-url.com
 Shows current deployment status:
 
 ```bash
-node scripts/deployment-status.js
+node scripts/deployment-status.cjs
 ```
 
 **What it shows:**
@@ -196,8 +196,8 @@ bash scripts/orchestrate-deployment.sh
 # - Enable HTTPS
 
 # Step 4: Monitor deployment
-node scripts/health-check.js
-node scripts/deployment-status.js
+node scripts/health-check.cjs
+node scripts/deployment-status.cjs
 ```
 
 ### Advanced Flow (Manual Control)
@@ -209,7 +209,7 @@ bash scripts/deploy.sh
 # Step 2: Environment Setup
 cp .env.production.template .env.production
 # Edit .env.production with your values
-node scripts/validate-env.js
+node scripts/validate-env.cjs
 
 # Step 3: Database Setup
 export DATABASE_URL="your-database-url"
@@ -227,8 +227,8 @@ railway up
 # Manual setup following scripts/cloudflare-setup.md
 
 # Step 6: Verification
-node scripts/health-check.js
-node scripts/deployment-status.js
+node scripts/health-check.cjs
+node scripts/deployment-status.cjs
 ```
 
 ---
@@ -329,7 +329,7 @@ railway status
 
 ```bash
 # Run health check
-node scripts/health-check.js
+node scripts/health-check.cjs
 
 # Check Railway logs
 railway logs | grep -i error
@@ -369,10 +369,10 @@ openssl s_client -connect dashboard.postiusgroup.com:443 -servername dashboard.p
 
 ```bash
 # Application health
-node scripts/health-check.js
+node scripts/health-check.cjs
 
 # Deployment status
-node scripts/deployment-status.js
+node scripts/deployment-status.cjs
 
 # Railway logs
 railway logs --tail 100
@@ -492,10 +492,10 @@ railway logs | grep -i error
 
 ```bash
 # Deployment status
-node scripts/deployment-status.js
+node scripts/deployment-status.cjs
 
 # Health check
-node scripts/health-check.js
+node scripts/health-check.cjs
 
 # Railway status
 railway status
@@ -516,10 +516,10 @@ railway status
 | Task | Command |
 |------|---------|
 | Master deployment | `bash scripts/orchestrate-deployment.sh` |
-| Validate environment | `node scripts/validate-env.js` |
+| Validate environment | `node scripts/validate-env.cjs` |
 | Initialize database | `bash scripts/init-db.sh` |
-| Check application health | `node scripts/health-check.js` |
-| View deployment status | `node scripts/deployment-status.js` |
+| Check application health | `node scripts/health-check.cjs` |
+| View deployment status | `node scripts/deployment-status.cjs` |
 | View Railway logs | `railway logs` |
 | Connect to application | `railway shell` |
 | Update environment | `railway variables set KEY=VALUE` |

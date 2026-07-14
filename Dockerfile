@@ -13,9 +13,10 @@ RUN apk add --no-cache python3 make g++ bash
 COPY package*.json ./
 COPY tsconfig.json ./
 
-# Install dependencies
-RUN npm ci --only=production && \
-    npm ci --only=development
+# Install all dependencies (dev deps are needed for the build step).
+# Uses npm install rather than npm ci because package-lock.json is gitignored,
+# so a build from a fresh git checkout has no lockfile for ci to consume.
+RUN npm install
 
 # Copy source code
 COPY . .
@@ -51,8 +52,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Use tini for proper signal handling
 ENTRYPOINT ["/sbin/tini", "--"]
 
-# Start application
-CMD ["node", "dist/server/index.js"]
+# Start application (esbuild emits the server bundle to dist/index.js)
+CMD ["node", "dist/index.js"]
 
 # Metadata
 LABEL maintainer="GitHub Dashboard Team"
