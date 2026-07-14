@@ -13,7 +13,8 @@ export default function RepositoryPage() {
 
     async function fetchRepository() {
       try {
-        const data = await apiRequest(`/api/repositories/${params.id}`);
+        const id = params!.id;
+        const data = await apiRequest(`/api/repositories/${id}`);
         setRepository(data);
       } catch (err) {
         console.error("Failed to load repository:", err);

@@ -1,7 +1,8 @@
 import cron from "node-cron";
 import { db } from "../db";
 import { vulnerabilityService } from "../services/vulnerability.service";
-import { vulnerabilities } from "@shared/schema";
+import { vulnerabilities, repositories } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 export async function initializeVulnerabilityJobs() {
   const cronSchedule = "0 2 * * *";
@@ -35,7 +36,7 @@ export async function runVulnerabilityDetection() {
         // Clear existing vulnerabilities for this repo
         await db
           .delete(vulnerabilities)
-          .where((t: any) => t.repositoryId === repo.id);
+          .where(eq(vulnerabilities.repositoryId, repo.id));
 
         // Insert new vulnerabilities
         for (const alert of alerts) {
@@ -71,7 +72,7 @@ export async function runVulnerabilityScanForRepository(
 ): Promise<any[]> {
   try {
     const repo = await db.query.repositories.findFirst({
-      where: (table: any) => table.id === repositoryId,
+      where: eq(repositories.id, repositoryId),
     });
 
     if (!repo) {
@@ -89,7 +90,7 @@ export async function runVulnerabilityScanForRepository(
     // Clear existing vulnerabilities
     await db
       .delete(vulnerabilities)
-      .where((t: any) => t.repositoryId === repo.id);
+      .where(eq(vulnerabilities.repositoryId, repo.id));
 
     // Insert new vulnerabilities
     for (const alert of alerts) {

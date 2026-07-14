@@ -4,6 +4,8 @@ import { scryptSync, randomBytes } from "crypto";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { AuthUser } from "./types";
+import "./types";
 
 // Hash password with scrypt
 function hashPassword(password: string, salt?: Buffer): string {
@@ -38,7 +40,7 @@ passport.use(
         return done(null, false, { message: "Invalid password" });
       }
 
-      return done(null, user);
+      return done(null, user as AuthUser);
     } catch (err) {
       return done(err);
     }
@@ -46,7 +48,7 @@ passport.use(
 );
 
 // Serialize user for session
-passport.serializeUser((user: any, done) => {
+passport.serializeUser((user: AuthUser, done) => {
   done(null, user.id);
 });
 
@@ -56,7 +58,7 @@ passport.deserializeUser(async (id: number, done) => {
     const user = await db.query.users.findFirst({
       where: eq(users.id, id),
     });
-    done(null, user);
+    done(null, user as AuthUser | undefined);
   } catch (err) {
     done(err);
   }

@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { passport, hashPassword } from "./auth";
 import * as storage from "./storage";
 import { syncService } from "./services/sync.service";
@@ -7,11 +7,14 @@ import { ZodError } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "./db";
 import { users } from "@shared/schema";
+import { AuthenticatedRequest } from "./types";
+import { runVulnerabilityScanForRepository } from "./jobs/detect-vulnerabilities.job";
+import "./types";
 
 const router = Router();
 
 // Auth middleware
-function requireAuth(req: any, res: any, next: any) {
+function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.user) {
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -73,7 +76,7 @@ router.get("/user", requireAuth, (req, res) => {
 });
 
 // Repository Routes
-router.get("/repositories", requireAuth, async (req, res) => {
+router.get("/repositories", requireAuth, async (req: any, res: any) => {
   try {
     const repos = await storage.getUserRepositories(req.user.id);
     res.json(repos);
@@ -83,7 +86,7 @@ router.get("/repositories", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/repositories/:id", requireAuth, async (req, res) => {
+router.get("/repositories/:id", requireAuth, async (req: any, res: any) => {
   try {
     const repo = await storage.getRepositoryById(
       parseInt(req.params.id),
@@ -99,7 +102,7 @@ router.get("/repositories/:id", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/repositories/sync", requireAuth, async (req, res) => {
+router.post("/repositories/sync", requireAuth, async (req: any, res: any) => {
   try {
     // Start sync in background
     syncService.syncAllRepositories(req.user.id).catch((err) => {
@@ -114,7 +117,7 @@ router.post("/repositories/sync", requireAuth, async (req, res) => {
 });
 
 // Dependency Routes
-router.get("/repositories/:id/dependencies", requireAuth, async (req, res) => {
+router.get("/repositories/:id/dependencies", requireAuth, async (req: any, res: any) => {
   try {
     // Verify user owns this repo
     const repo = await storage.getRepositoryById(
@@ -133,7 +136,7 @@ router.get("/repositories/:id/dependencies", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/dependencies/outdated", requireAuth, async (req, res) => {
+router.get("/dependencies/outdated", requireAuth, async (req: any, res: any) => {
   try {
     const repos = await storage.getUserRepositories(req.user.id);
     const outdated = [];
@@ -157,7 +160,7 @@ router.get("/dependencies/outdated", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/dependencies/vulnerable", requireAuth, async (req, res) => {
+router.get("/dependencies/vulnerable", requireAuth, async (req: any, res: any) => {
   try {
     const repos = await storage.getUserRepositories(req.user.id);
     const vulnerable = [];
@@ -181,7 +184,7 @@ router.get("/dependencies/vulnerable", requireAuth, async (req, res) => {
 });
 
 // Unused Dependencies Routes
-router.get("/repositories/:id/unused-dependencies", requireAuth, async (req, res) => {
+router.get("/repositories/:id/unused-dependencies", requireAuth, async (req: any, res: any) => {
   try {
     // Verify user owns this repo
     const repo = await storage.getRepositoryById(
@@ -202,7 +205,7 @@ router.get("/repositories/:id/unused-dependencies", requireAuth, async (req, res
   }
 });
 
-router.get("/dependencies/unused", requireAuth, async (req, res) => {
+router.get("/dependencies/unused", requireAuth, async (req: any, res: any) => {
   try {
     const repos = await storage.getUserRepositories(req.user.id);
     const allUnused = [];
@@ -229,7 +232,7 @@ router.get("/dependencies/unused", requireAuth, async (req, res) => {
 router.get(
   "/repositories/:id/vulnerabilities",
   requireAuth,
-  async (req, res) => {
+  async (req: any, res: any) => {
     try {
       // Verify user owns this repo
       const repo = await storage.getRepositoryById(
@@ -251,7 +254,7 @@ router.get(
   }
 );
 
-router.get("/vulnerabilities/all", requireAuth, async (req, res) => {
+router.get("/vulnerabilities/all", requireAuth, async (req: any, res: any) => {
   try {
     const repos = await storage.getUserRepositories(req.user.id);
     const allVulns = [];
@@ -274,7 +277,7 @@ router.get("/vulnerabilities/all", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/repositories/:id/vulnerabilities/scan", requireAuth, async (req, res) => {
+router.post("/repositories/:id/vulnerabilities/scan", requireAuth, async (req: any, res: any) => {
   try {
     // Verify user owns this repo
     const repo = await storage.getRepositoryById(
@@ -285,8 +288,7 @@ router.post("/repositories/:id/vulnerabilities/scan", requireAuth, async (req, r
       return res.status(404).json({ error: "Repository not found" });
     }
 
-    // Import and run the scan function
-    const { runVulnerabilityScanForRepository } = await import("../jobs/detect-vulnerabilities.job");
+    // Run the scan function
     await runVulnerabilityScanForRepository(parseInt(req.params.id));
 
     res.json({ message: "Vulnerability scan completed", status: "completed" });
@@ -297,7 +299,7 @@ router.post("/repositories/:id/vulnerabilities/scan", requireAuth, async (req, r
 });
 
 // Architecture Routes
-router.get("/repositories/:id/architecture", requireAuth, async (req, res) => {
+router.get("/repositories/:id/architecture", requireAuth, async (req: any, res: any) => {
   try {
     // Verify user owns this repo
     const repo = await storage.getRepositoryById(
@@ -319,7 +321,7 @@ router.get("/repositories/:id/architecture", requireAuth, async (req, res) => {
 router.post(
   "/repositories/:id/architecture/regenerate",
   requireAuth,
-  async (req, res) => {
+  async (req: any, res: any) => {
     try {
       // Will trigger architecture generation job
       res.json({ message: "Regeneration started", status: "pending" });
@@ -331,7 +333,7 @@ router.post(
 );
 
 // Logs Routes
-router.get("/repositories/:id/logs", requireAuth, async (req, res) => {
+router.get("/repositories/:id/logs", requireAuth, async (req: any, res: any) => {
   try {
     // Verify user owns this repo
     const repo = await storage.getRepositoryById(
@@ -352,7 +354,7 @@ router.get("/repositories/:id/logs", requireAuth, async (req, res) => {
 });
 
 // Settings Routes
-router.get("/settings", requireAuth, async (req, res) => {
+router.get("/settings", requireAuth, async (req: any, res: any) => {
   try {
     res.json({
       syncFrequency: parseInt(process.env.SYNC_INTERVAL_MINUTES || "60"),
@@ -363,7 +365,7 @@ router.get("/settings", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/settings/github-token", requireAuth, async (req, res) => {
+router.post("/settings/github-token", requireAuth, async (req: any, res: any) => {
   try {
     const { githubToken } = req.body;
 

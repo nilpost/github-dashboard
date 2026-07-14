@@ -103,7 +103,7 @@ class DependencyService {
     return results;
   }
 
-  private async getLatestVersion(packageName: string): Promise<string | null> {
+  private async getLatestVersion(packageName: string): Promise<string | undefined> {
     try {
       const response = await fetch(
         `https://registry.npmjs.org/${packageName}/latest`,
@@ -114,14 +114,14 @@ class DependencyService {
       );
 
       if (!response.ok) {
-        return null;
+        return undefined;
       }
 
       const data = await response.json();
-      return data.version || null;
+      return data.version || undefined;
     } catch (error) {
       console.warn(`Failed to fetch latest version for ${packageName}:`, error);
-      return null;
+      return undefined;
     }
   }
 

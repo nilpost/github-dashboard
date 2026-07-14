@@ -91,8 +91,9 @@ class ArchitectureService {
     // Find modules that are not dependencies of others
     const entryPoints: string[] = [];
     for (const module of allModules) {
-      if (!modulesWithIncomingDeps.has(module)) {
-        entryPoints.push(module);
+      const moduleName = module as string;
+      if (!modulesWithIncomingDeps.has(moduleName)) {
+        entryPoints.push(moduleName);
       }
     }
 
