@@ -1,0 +1,2 @@
+[build]
+buildModules = ["nodejs-20"]
