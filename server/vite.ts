@@ -1,5 +1,6 @@
 import { createServer as createViteServer } from "vite";
 import type { ViteDevServer } from "vite";
+import type { Request, Response } from "express";
 
 let vite: ViteDevServer;
 
@@ -12,7 +13,7 @@ export async function setupVite(app: any) {
   app.use(vite.middlewares);
 
   // Handle SPA fallback
-  app.get("*", async (req, res) => {
+  app.get("*", async (req: Request, res: Response) => {
     try {
       const url = req.originalUrl;
       const html = await vite.transformIndexHtml(url, `

@@ -142,6 +142,10 @@ class GitHubService {
         throw new Error("Expected file, got directory");
       }
 
+      if (response.data.type !== "file" || !("content" in response.data)) {
+        throw new Error("Expected file with content");
+      }
+
       const content = Buffer.from(response.data.content, "base64").toString(
         "utf-8"
       );
@@ -177,6 +181,10 @@ class GitHubService {
 
       if (Array.isArray(response.data)) {
         throw new Error("Expected file, got directory");
+      }
+
+      if (response.data.type !== "file" || !("content" in response.data)) {
+        throw new Error("Expected file with content");
       }
 
       return Buffer.from(response.data.content, "base64").toString("utf-8");
