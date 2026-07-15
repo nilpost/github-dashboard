@@ -64,4 +64,10 @@ passport.deserializeUser(async (id: number, done) => {
   }
 });
 
-export { passport, hashPassword, verifyPassword };
+// Strip sensitive fields (password hash) before sending a user to the client.
+function sanitizeUser<T extends { password?: string }>(user: T): Omit<T, "password"> {
+  const { password, ...safe } = user;
+  return safe;
+}
+
+export { passport, hashPassword, verifyPassword, sanitizeUser };

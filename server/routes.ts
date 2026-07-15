@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { passport, hashPassword } from "./auth";
+import { passport, hashPassword, sanitizeUser } from "./auth";
 import * as storage from "./storage";
 import { syncService } from "./services/sync.service";
 import { loginSchema, registerSchema } from "@shared/schema";
@@ -48,7 +48,7 @@ router.post("/register", async (req, res) => {
       if (err) {
         return res.status(500).json({ error: "Login failed" });
       }
-      res.status(201).json(user);
+      res.status(201).json(sanitizeUser(user));
     });
   } catch (err) {
     if (err instanceof ZodError) {
@@ -59,7 +59,7 @@ router.post("/register", async (req, res) => {
 });
 
 router.post("/login", passport.authenticate("local"), (req, res) => {
-  res.json(req.user);
+  res.json(sanitizeUser(req.user as any));
 });
 
 router.post("/logout", (req, res) => {
@@ -72,7 +72,7 @@ router.post("/logout", (req, res) => {
 });
 
 router.get("/user", requireAuth, (req, res) => {
-  res.json(req.user);
+  res.json(sanitizeUser(req.user as any));
 });
 
 // Repository Routes
