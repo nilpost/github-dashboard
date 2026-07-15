@@ -64,8 +64,12 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for step-by-step instructions to deploy on Ra
 
 ## 📚 Documentation
 
+- **[CLAUDE.md](CLAUDE.md)** - Project context, architecture map, conventions & gotchas (also auto-loaded by Claude Code)
+- **[DEPLOY.md](DEPLOY.md)** - Concise deployment runbook (start here to go live)
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** - Local setup, development workflow, troubleshooting
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Railway deployment, Cloudflare DNS configuration
+- **[POSTIUSGROUP_SETUP.md](POSTIUSGROUP_SETUP.md)** - Full postiusgroup.com production setup guide
+- **[DEPLOYMENT_AUTOMATION.md](DEPLOYMENT_AUTOMATION.md)** - Deployment automation scripts reference
 - **[TOOLS_INTEGRATION_STRATEGY.md](TOOLS_INTEGRATION_STRATEGY.md)** - External tools rationale, API examples, implementation guide
 
 ## 🏗️ Architecture
