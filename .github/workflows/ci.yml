@@ -7,8 +7,28 @@ on:
 
 jobs:
   build:
-    name: Type-check & build
+    name: Type-check, build & test
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: github_dashboard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/github_dashboard
+      SESSION_SECRET: ci-test-secret-key-that-is-at-least-32-characters-long
+      NODE_ENV: test
 
     steps:
       - name: Checkout
@@ -29,3 +49,9 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Push database schema
+        run: npm run db:push
+
+      - name: Test
+        run: npm test
