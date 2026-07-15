@@ -93,6 +93,20 @@ green. `package-lock.json` is gitignored, so CI uses `npm install`, not `npm ci`
 - **Secrets**: `.env`, `.env.production`, `.env.staging` are gitignored. Only the
   placeholder `.env.production.template` is committed.
 
+## Reusable @po capabilities
+
+This repo carries a self-improving deployment-readiness toolkit that loads
+automatically:
+
+- **`.claude/agents/po.md`** — the `@po` agent (deployment-readiness specialist).
+- **`.claude/skills/deploy-readiness/`** — the playbook skill (invoke via
+  `/deploy-readiness`, or it triggers on review/verify/deploy requests).
+- **`LEARNINGS.md`** — transferable learnings, applied by both of the above.
+
+Rule: when a project reaches deploy-ready (build + type-check + tests green, app
+verified running), refresh `LEARNINGS.md` (new lessons + dated Changelog entry).
+To reuse across other repos, copy these three into your personal `~/.claude/`.
+
 ## Git workflow
 
 Develop on branch `claude/repo-setup-postiusgroup-3cux5c`; open PRs against `main`
