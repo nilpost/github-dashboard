@@ -93,19 +93,22 @@ green. `package-lock.json` is gitignored, so CI uses `npm install`, not `npm ci`
 - **Secrets**: `.env`, `.env.production`, `.env.staging` are gitignored. Only the
   placeholder `.env.production.template` is committed.
 
-## Reusable @po capabilities
+## Reusable capabilities (studio-core plugin)
 
-This repo carries a self-improving deployment-readiness toolkit that loads
-automatically:
+This repo installs the **studio-core** plugin via `.claude/settings.json` (the
+`claude-code-studio` marketplace, GitHub source). It loads automatically in every
+local and cloud session and provides:
 
-- **`.claude/agents/po.md`** — the `@po` agent (deployment-readiness specialist).
-- **`.claude/skills/deploy-readiness/`** — the playbook skill (invoke via
-  `/deploy-readiness`, or it triggers on review/verify/deploy requests).
-- **`LEARNINGS.md`** — transferable learnings, applied by both of the above.
+- **Shared agents** — `po` (Product Owner orchestrator), `code-review`, `qa`,
+  `devops`, `security`, `docs`, `infra-admin`, `backlog`, `feature-planning`.
+- **Incremental-learning loop** — `recall-learnings` (surface prior lessons at
+  start) and `capture-learnings` skills + the `/learn` command, backed by a
+  cross-project knowledge base (`knowledge/LEARNINGS.md` in that repo).
 
-Rule: when a project reaches deploy-ready (build + type-check + tests green, app
-verified running), refresh `LEARNINGS.md` (new lessons + dated Changelog entry).
-To reuse across other repos, copy these three into your personal `~/.claude/`.
+Locally, **`.claude/skills/deploy-readiness/`** adds a deploy-readiness playbook
+for this project. Rule: when a project reaches deploy-ready (build + type-check +
+tests green, app verified running), capture new lessons via the studio loop
+(`/learn`) so they propagate to every environment.
 
 ## Git workflow
 
