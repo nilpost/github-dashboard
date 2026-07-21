@@ -56,6 +56,13 @@ function validateLogin(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+// CSRF bootstrap: the client fetches this once to obtain the token it must
+// echo in the x-csrf-token header on state-changing requests. The token cookie
+// itself is set by the csrfProtection middleware on every response.
+router.get("/csrf", (req, res) => {
+  res.json({ csrfToken: (req as Request & { csrfToken?: string }).csrfToken });
+});
+
 // Auth Routes
 router.post("/register", authLimiter, async (req, res) => {
   try {

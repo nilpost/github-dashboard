@@ -1,4 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
+import { csrfHeaders } from "./csrf";
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,10 +19,14 @@ export async function apiRequest(
   url: string,
   options?: RequestInit
 ): Promise<any> {
+  const method = (options?.method ?? "GET").toUpperCase();
+  const isMutation = method !== "GET" && method !== "HEAD";
+
   const response = await fetch(url, {
     ...options,
     headers: {
       "Content-Type": "application/json",
+      ...(isMutation ? await csrfHeaders() : {}),
       ...options?.headers,
     },
     credentials: "include",

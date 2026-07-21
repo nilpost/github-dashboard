@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { csrfHeaders } from "@/lib/csrf";
 
 export default function RegisterPage() {
   const [, setLocation] = useLocation();
@@ -17,7 +18,7 @@ export default function RegisterPage() {
     try {
       const response = await fetch("/api/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await csrfHeaders()) },
         credentials: "include",
         body: JSON.stringify(data),
       });
