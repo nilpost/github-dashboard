@@ -20,6 +20,22 @@ export async function createApp(pool: Pool): Promise<Express> {
   const NODE_ENV = process.env.NODE_ENV || "development";
   const app = express();
 
+  // Session secret. In production a real secret MUST be supplied — falling back
+  // to a hardcoded value would let anyone forge a session cookie and hijack any
+  // account, since that value lives in the public repo. Fail fast (mirroring
+  // db.ts's DATABASE_URL check) rather than silently using the dev default.
+  // Outside production a dev fallback keeps local/test runs frictionless.
+  const sessionSecret = process.env.SESSION_SECRET;
+  if (NODE_ENV === "production") {
+    if (!sessionSecret || sessionSecret.length < 32) {
+      throw new Error(
+        "SESSION_SECRET environment variable is required in production and must be at least 32 characters"
+      );
+    }
+  }
+  const resolvedSessionSecret =
+    sessionSecret || "dev-secret-key-min-32-characters";
+
   // Trust the TLS-terminating proxy (Railway / Cloudflare) so that secure
   // session cookies are issued for requests that arrived over HTTPS but reach
   // the app as plain HTTP. Without this, login silently fails in production.
@@ -39,7 +55,7 @@ export async function createApp(pool: Pool): Promise<Express> {
         tableName: "session",
         createTableIfMissing: true,
       }),
-      secret: process.env.SESSION_SECRET || "dev-secret-key-min-32-characters",
+      secret: resolvedSessionSecret,
       resave: false,
       saveUninitialized: false,
       cookie: {
