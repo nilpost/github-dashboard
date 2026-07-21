@@ -1,0 +1,16 @@
+# gitleaks configuration for this repo.
+# Extends the default ruleset and allowlists two well-known NON-secrets that the
+# generic rules flag on entropy. Any real credential is still caught.
+title = "Repo gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented placeholders / CI dummy values (not real secrets)"
+regexes = [
+  # Dummy SESSION_SECRET used only by the CI test job (.github/workflows/ci.yml)
+  '''ci-test-secret-key-that-is-at-least-32-characters-long''',
+  # Literal placeholder token in POSTIUSGROUP_SETUP.md ("Authorization: token YOUR_TOKEN")
+  '''YOUR_TOKEN''',
+]
