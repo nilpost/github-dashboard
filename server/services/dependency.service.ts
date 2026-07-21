@@ -14,20 +14,31 @@ interface DependencyData {
   isDevelopment: boolean;
 }
 
-function parseVersionRange(versionRange: string): string {
+// A bare "major.minor.patch" version, e.g. the "1.2.3" pulled out of "^1.2.3".
+const BASE_VERSION_RE = /^\d+\.\d+\.\d+$/;
+
+export function parseVersionRange(versionRange: string): string {
   // Extract the base version from semver ranges like "^1.0.0", "~2.1.0", ">=3.0.0", etc
   const match = versionRange.match(/\d+\.\d+\.\d+/);
   return match ? match[0] : versionRange;
 }
 
-function compareVersions(current: string, latest: string): boolean {
-  // Simple semver comparison - returns true if current < latest
-  const currentParts = parseVersionRange(current)
-    .split(".")
-    .map(Number);
-  const latestParts = parseVersionRange(latest)
-    .split(".")
-    .map(Number);
+export function compareVersions(current: string, latest: string): boolean {
+  // Simple semver comparison - returns true if current < latest.
+  const currentBase = parseVersionRange(current);
+  const latestBase = parseVersionRange(latest);
+
+  // If either side has no extractable numeric version (e.g. "workspace:*",
+  // "file:../local", a git URL), we cannot meaningfully compare them. Bail out
+  // as "not outdated" rather than coercing the missing parts to 0 (which would
+  // make "workspace:*" look like 0.0.0 and get flagged outdated against any
+  // real release — a false positive).
+  if (!BASE_VERSION_RE.test(currentBase) || !BASE_VERSION_RE.test(latestBase)) {
+    return false;
+  }
+
+  const currentParts = currentBase.split(".").map(Number);
+  const latestParts = latestBase.split(".").map(Number);
 
   for (let i = 0; i < Math.max(currentParts.length, latestParts.length); i++) {
     const curr = currentParts[i] || 0;

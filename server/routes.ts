@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
+import rateLimit from "express-rate-limit";
 import { passport, hashPassword, sanitizeUser } from "./auth";
 import * as storage from "./storage";
 import { syncService } from "./services/sync.service";
@@ -21,8 +22,34 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+// Throttle credential endpoints to blunt brute-force / credential-stuffing.
+// Skipped under test so the suite's repeated login/register calls stay
+// deterministic; production/dev get the real limiter.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // per IP per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many attempts, please try again later" },
+  skip: () => process.env.NODE_ENV === "test",
+});
+
+// Validate the login body up front (parity with /register) so malformed
+// credentials get a clean 400 instead of falling through to Passport.
+function validateLogin(req: Request, res: Response, next: NextFunction) {
+  try {
+    loginSchema.parse(req.body);
+    next();
+  } catch (err) {
+    if (err instanceof ZodError) {
+      return res.status(400).json({ error: err.errors });
+    }
+    next(err);
+  }
+}
+
 // Auth Routes
-router.post("/register", async (req, res) => {
+router.post("/register", authLimiter, async (req, res) => {
   try {
     const data = registerSchema.parse(req.body);
 
@@ -58,9 +85,15 @@ router.post("/register", async (req, res) => {
   }
 });
 
-router.post("/login", passport.authenticate("local"), (req, res) => {
-  res.json(sanitizeUser(req.user as any));
-});
+router.post(
+  "/login",
+  authLimiter,
+  validateLogin,
+  passport.authenticate("local"),
+  (req, res) => {
+    res.json(sanitizeUser(req.user as any));
+  }
+);
 
 router.post("/logout", (req, res) => {
   req.logout((err) => {
@@ -322,13 +355,12 @@ router.post(
   "/repositories/:id/architecture/regenerate",
   requireAuth,
   async (req: any, res: any) => {
-    try {
-      // Will trigger architecture generation job
-      res.json({ message: "Regeneration started", status: "pending" });
-    } catch (err) {
-      console.error("Failed to regenerate architecture:", err);
-      res.status(500).json({ error: "Regeneration failed" });
-    }
+    // Architecture regeneration is not wired up (architecture.service.ts has no
+    // caller). Report 501 honestly rather than a fake "pending" that never
+    // completes, so the client doesn't show progress for work that never runs.
+    res
+      .status(501)
+      .json({ error: "Architecture regeneration is not implemented yet" });
   }
 );
 
@@ -366,20 +398,13 @@ router.get("/settings", requireAuth, async (req: any, res: any) => {
 });
 
 router.post("/settings/github-token", requireAuth, async (req: any, res: any) => {
-  try {
-    const { githubToken } = req.body;
-
-    if (!githubToken || githubToken.length < 10) {
-      return res.status(400).json({ error: "Invalid token" });
-    }
-
-    // Store token in session or database (implementation depends on your approach)
-    // For now, just validate it works by checking GitHub connection
-    res.json({ message: "Token saved" });
-  } catch (err) {
-    console.error("Failed to save token:", err);
-    res.status(500).json({ error: "Failed to save token" });
-  }
+  // Per-user GitHub token storage is not implemented — the app uses the
+  // server-wide GITHUB_TOKEN env var. The previous handler replied "Token
+  // saved" without persisting or verifying anything, which was misleading.
+  // Return 501 until real (encrypted, verified) persistence exists.
+  res
+    .status(501)
+    .json({ error: "Saving a per-user GitHub token is not implemented yet" });
 });
 
 export function registerRoutes(app: any) {
