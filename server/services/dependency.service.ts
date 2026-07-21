@@ -80,35 +80,58 @@ class DependencyService {
     return dependencies;
   }
 
+  // Cap on concurrent npm-registry lookups. Running them one-at-a-time is slow
+  // for large manifests; firing all at once would hammer the registry and risk
+  // rate limits. A small pool balances both.
+  private static readonly REGISTRY_CONCURRENCY = 5;
+
   private async processDependencies(
     deps: PackageJsonDeps,
     isDevelopment: boolean
   ): Promise<DependencyData[]> {
+    const entries = Object.entries(deps);
     const results: DependencyData[] = [];
 
-    for (const [name, version] of Object.entries(deps)) {
-      try {
-        const latestVersion = await this.getLatestVersion(name);
-        const currentVersion = parseVersionRange(version);
-        const isOutdated =
-          latestVersion && compareVersions(currentVersion, latestVersion);
+    // Process in fixed-size batches so at most REGISTRY_CONCURRENCY requests
+    // are in flight at once.
+    for (
+      let i = 0;
+      i < entries.length;
+      i += DependencyService.REGISTRY_CONCURRENCY
+    ) {
+      const batch = entries.slice(
+        i,
+        i + DependencyService.REGISTRY_CONCURRENCY
+      );
 
-        results.push({
-          dependencyName: name,
-          currentVersion: version,
-          latestVersion,
-          isOutdated: isOutdated || false,
-          isDevelopment,
-        });
-      } catch (error) {
-        // If we can't fetch latest version, still record the dependency
-        results.push({
-          dependencyName: name,
-          currentVersion: version,
-          isOutdated: false,
-          isDevelopment,
-        });
-      }
+      const batchResults = await Promise.all(
+        batch.map(async ([name, version]) => {
+          try {
+            const latestVersion = await this.getLatestVersion(name);
+            const isOutdated =
+              latestVersion &&
+              compareVersions(parseVersionRange(version), latestVersion);
+
+            return {
+              dependencyName: name,
+              currentVersion: version,
+              latestVersion,
+              isOutdated: isOutdated || false,
+              isDevelopment,
+            };
+          } catch (error) {
+            // If we can't fetch latest version, still record the dependency
+            return {
+              dependencyName: name,
+              currentVersion: version,
+              isOutdated: false,
+              isDevelopment,
+            };
+          }
+        })
+      );
+
+      results.push(...batchResults);
     }
 
     return results;

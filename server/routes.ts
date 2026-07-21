@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Request, Response, NextFunction, RequestHandler } from "express";
 import rateLimit from "express-rate-limit";
 import { passport, hashPassword, sanitizeUser } from "./auth";
 import * as storage from "./storage";
@@ -8,18 +8,26 @@ import { ZodError } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "./db";
 import { users } from "@shared/schema";
-import { AuthenticatedRequest } from "./types";
+import { AuthenticatedRequest, AuthUser } from "./types";
 import { runVulnerabilityScanForRepository } from "./jobs/detect-vulnerabilities.job";
 import "./types";
 
 const router = Router();
 
-// Auth middleware
-function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (!req.user) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-  next();
+// Wrap a handler that requires an authenticated user: it returns 401 when there
+// is no session, and otherwise invokes the handler with the request narrowed to
+// AuthenticatedRequest (so `req.user` is typed and non-optional, no `any`).
+// Rejected promises are forwarded to the error middleware instead of hanging.
+function authed(
+  handler: (req: AuthenticatedRequest, res: Response) => unknown | Promise<unknown>
+): RequestHandler {
+  return (req, res, next) => {
+    if (!req.user) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    Promise.resolve(handler(req as AuthenticatedRequest, res)).catch(next);
+  };
 }
 
 // Throttle credential endpoints to blunt brute-force / credential-stuffing.
@@ -91,7 +99,7 @@ router.post(
   validateLogin,
   passport.authenticate("local"),
   (req, res) => {
-    res.json(sanitizeUser(req.user as any));
+    res.json(sanitizeUser(req.user as AuthUser));
   }
 );
 
@@ -104,168 +112,193 @@ router.post("/logout", (req, res) => {
   });
 });
 
-router.get("/user", requireAuth, (req, res) => {
-  res.json(sanitizeUser(req.user as any));
-});
+router.get(
+  "/user",
+  authed((req, res) => {
+    res.json(sanitizeUser(req.user));
+  })
+);
 
 // Repository Routes
-router.get("/repositories", requireAuth, async (req: any, res: any) => {
-  try {
-    const repos = await storage.getUserRepositories(req.user.id);
-    res.json(repos);
-  } catch (err) {
-    console.error("Failed to fetch repositories:", err);
-    res.status(500).json({ error: "Failed to fetch repositories" });
-  }
-});
-
-router.get("/repositories/:id", requireAuth, async (req: any, res: any) => {
-  try {
-    const repo = await storage.getRepositoryById(
-      parseInt(req.params.id),
-      req.user.id
-    );
-    if (!repo) {
-      return res.status(404).json({ error: "Repository not found" });
+router.get(
+  "/repositories",
+  authed(async (req, res) => {
+    try {
+      const repos = await storage.getUserRepositories(req.user.id);
+      res.json(repos);
+    } catch (err) {
+      console.error("Failed to fetch repositories:", err);
+      res.status(500).json({ error: "Failed to fetch repositories" });
     }
-    res.json(repo);
-  } catch (err) {
-    console.error("Failed to fetch repository:", err);
-    res.status(500).json({ error: "Failed to fetch repository" });
-  }
-});
+  })
+);
 
-router.post("/repositories/sync", requireAuth, async (req: any, res: any) => {
-  try {
-    // Start sync in background
-    syncService.syncAllRepositories(req.user.id).catch((err) => {
-      console.error("Background sync failed:", err);
-    });
+router.get(
+  "/repositories/:id",
+  authed(async (req, res) => {
+    try {
+      const repo = await storage.getRepositoryById(
+        parseInt(req.params.id),
+        req.user.id
+      );
+      if (!repo) {
+        return res.status(404).json({ error: "Repository not found" });
+      }
+      res.json(repo);
+    } catch (err) {
+      console.error("Failed to fetch repository:", err);
+      res.status(500).json({ error: "Failed to fetch repository" });
+    }
+  })
+);
 
-    res.json({ message: "Sync started", status: "pending" });
-  } catch (err) {
-    console.error("Failed to start sync:", err);
-    res.status(500).json({ error: "Sync failed" });
-  }
-});
+router.post(
+  "/repositories/sync",
+  authed(async (req, res) => {
+    try {
+      // Start sync in background
+      syncService.syncAllRepositories(req.user.id).catch((err) => {
+        console.error("Background sync failed:", err);
+      });
+
+      res.json({ message: "Sync started", status: "pending" });
+    } catch (err) {
+      console.error("Failed to start sync:", err);
+      res.status(500).json({ error: "Sync failed" });
+    }
+  })
+);
 
 // Dependency Routes
-router.get("/repositories/:id/dependencies", requireAuth, async (req: any, res: any) => {
-  try {
-    // Verify user owns this repo
-    const repo = await storage.getRepositoryById(
-      parseInt(req.params.id),
-      req.user.id
-    );
-    if (!repo) {
-      return res.status(404).json({ error: "Repository not found" });
-    }
-
-    const deps = await storage.getDependenciesByRepo(parseInt(req.params.id));
-    res.json(deps);
-  } catch (err) {
-    console.error("Failed to fetch dependencies:", err);
-    res.status(500).json({ error: "Failed to fetch dependencies" });
-  }
-});
-
-router.get("/dependencies/outdated", requireAuth, async (req: any, res: any) => {
-  try {
-    const repos = await storage.getUserRepositories(req.user.id);
-    const outdated = [];
-
-    for (const repo of repos) {
-      const deps = repo.dependencies || [];
-      const repoOutdated = deps.filter((d) => d.isOutdated);
-      if (repoOutdated.length > 0) {
-        outdated.push({
-          repository: repo.name,
-          repositoryId: repo.id,
-          dependencies: repoOutdated,
-        });
+router.get(
+  "/repositories/:id/dependencies",
+  authed(async (req, res) => {
+    try {
+      // Verify user owns this repo
+      const repo = await storage.getRepositoryById(
+        parseInt(req.params.id),
+        req.user.id
+      );
+      if (!repo) {
+        return res.status(404).json({ error: "Repository not found" });
       }
+
+      const deps = await storage.getDependenciesByRepo(parseInt(req.params.id));
+      res.json(deps);
+    } catch (err) {
+      console.error("Failed to fetch dependencies:", err);
+      res.status(500).json({ error: "Failed to fetch dependencies" });
     }
+  })
+);
 
-    res.json(outdated);
-  } catch (err) {
-    console.error("Failed to fetch outdated dependencies:", err);
-    res.status(500).json({ error: "Failed to fetch outdated dependencies" });
-  }
-});
+router.get(
+  "/dependencies/outdated",
+  authed(async (req, res) => {
+    try {
+      const repos = await storage.getUserRepositories(req.user.id);
+      const outdated = [];
 
-router.get("/dependencies/vulnerable", requireAuth, async (req: any, res: any) => {
-  try {
-    const repos = await storage.getUserRepositories(req.user.id);
-    const vulnerable = [];
-
-    for (const repo of repos) {
-      const vulns = repo.vulnerabilities || [];
-      if (vulns.length > 0) {
-        vulnerable.push({
-          repository: repo.name,
-          repositoryId: repo.id,
-          vulnerabilities: vulns,
-        });
+      for (const repo of repos) {
+        const deps = repo.dependencies || [];
+        const repoOutdated = deps.filter((d) => d.isOutdated);
+        if (repoOutdated.length > 0) {
+          outdated.push({
+            repository: repo.name,
+            repositoryId: repo.id,
+            dependencies: repoOutdated,
+          });
+        }
       }
-    }
 
-    res.json(vulnerable);
-  } catch (err) {
-    console.error("Failed to fetch vulnerable dependencies:", err);
-    res.status(500).json({ error: "Failed to fetch vulnerable dependencies" });
-  }
-});
+      res.json(outdated);
+    } catch (err) {
+      console.error("Failed to fetch outdated dependencies:", err);
+      res.status(500).json({ error: "Failed to fetch outdated dependencies" });
+    }
+  })
+);
+
+router.get(
+  "/dependencies/vulnerable",
+  authed(async (req, res) => {
+    try {
+      const repos = await storage.getUserRepositories(req.user.id);
+      const vulnerable = [];
+
+      for (const repo of repos) {
+        const vulns = repo.vulnerabilities || [];
+        if (vulns.length > 0) {
+          vulnerable.push({
+            repository: repo.name,
+            repositoryId: repo.id,
+            vulnerabilities: vulns,
+          });
+        }
+      }
+
+      res.json(vulnerable);
+    } catch (err) {
+      console.error("Failed to fetch vulnerable dependencies:", err);
+      res.status(500).json({ error: "Failed to fetch vulnerable dependencies" });
+    }
+  })
+);
 
 // Unused Dependencies Routes
-router.get("/repositories/:id/unused-dependencies", requireAuth, async (req: any, res: any) => {
-  try {
-    // Verify user owns this repo
-    const repo = await storage.getRepositoryById(
-      parseInt(req.params.id),
-      req.user.id
-    );
-    if (!repo) {
-      return res.status(404).json({ error: "Repository not found" });
+router.get(
+  "/repositories/:id/unused-dependencies",
+  authed(async (req, res) => {
+    try {
+      // Verify user owns this repo
+      const repo = await storage.getRepositoryById(
+        parseInt(req.params.id),
+        req.user.id
+      );
+      if (!repo) {
+        return res.status(404).json({ error: "Repository not found" });
+      }
+
+      const unused = await storage.getUnusedDependenciesByRepo(
+        parseInt(req.params.id)
+      );
+      res.json(unused);
+    } catch (err) {
+      console.error("Failed to fetch unused dependencies:", err);
+      res.status(500).json({ error: "Failed to fetch unused dependencies" });
     }
+  })
+);
 
-    const unused = await storage.getUnusedDependenciesByRepo(
-      parseInt(req.params.id)
-    );
-    res.json(unused);
-  } catch (err) {
-    console.error("Failed to fetch unused dependencies:", err);
-    res.status(500).json({ error: "Failed to fetch unused dependencies" });
-  }
-});
-
-router.get("/dependencies/unused", requireAuth, async (req: any, res: any) => {
-  try {
-    const repos = await storage.getUserRepositories(req.user.id);
-    const allUnused = [];
-
-    for (const repo of repos) {
-      const unused = await storage.getUnusedDependenciesByRepo(repo.id);
-      if (unused.length > 0) {
-        allUnused.push({
+router.get(
+  "/dependencies/unused",
+  authed(async (req, res) => {
+    try {
+      // Single query with the unused dependencies eager-loaded, instead of one
+      // extra query per repository.
+      const repos = await storage.getUserRepositoriesWithUnusedDependencies(
+        req.user.id
+      );
+      const allUnused = repos
+        .filter((repo) => (repo.unusedDependencies?.length ?? 0) > 0)
+        .map((repo) => ({
           repository: repo.name,
           repositoryId: repo.id,
-          unusedDependencies: unused,
-        });
-      }
-    }
+          unusedDependencies: repo.unusedDependencies,
+        }));
 
-    res.json(allUnused);
-  } catch (err) {
-    console.error("Failed to fetch unused dependencies:", err);
-    res.status(500).json({ error: "Failed to fetch unused dependencies" });
-  }
-});
+      res.json(allUnused);
+    } catch (err) {
+      console.error("Failed to fetch unused dependencies:", err);
+      res.status(500).json({ error: "Failed to fetch unused dependencies" });
+    }
+  })
+);
 
 // Vulnerability Routes
 router.get(
   "/repositories/:id/vulnerabilities",
-  requireAuth,
-  async (req: any, res: any) => {
+  authed(async (req, res) => {
     try {
       // Verify user owns this repo
       const repo = await storage.getRepositoryById(
@@ -284,128 +317,145 @@ router.get(
       console.error("Failed to fetch vulnerabilities:", err);
       res.status(500).json({ error: "Failed to fetch vulnerabilities" });
     }
-  }
+  })
 );
 
-router.get("/vulnerabilities/all", requireAuth, async (req: any, res: any) => {
-  try {
-    const repos = await storage.getUserRepositories(req.user.id);
-    const allVulns = [];
+router.get(
+  "/vulnerabilities/all",
+  authed(async (req, res) => {
+    try {
+      const repos = await storage.getUserRepositories(req.user.id);
+      const allVulns = [];
 
-    for (const repo of repos) {
-      const vulns = repo.vulnerabilities || [];
-      allVulns.push(...vulns.map((v) => ({ ...v, repositoryId: repo.id })));
+      for (const repo of repos) {
+        const vulns = repo.vulnerabilities || [];
+        allVulns.push(...vulns.map((v) => ({ ...v, repositoryId: repo.id })));
+      }
+
+      // Sort by severity
+      const severityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+      allVulns.sort(
+        (a, b) =>
+          severityOrder[a.severity as keyof typeof severityOrder] -
+          severityOrder[b.severity as keyof typeof severityOrder]
+      );
+
+      res.json(allVulns);
+    } catch (err) {
+      console.error("Failed to fetch vulnerabilities:", err);
+      res.status(500).json({ error: "Failed to fetch vulnerabilities" });
     }
+  })
+);
 
-    // Sort by severity
-    const severityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
-    allVulns.sort(
-      (a, b) => severityOrder[a.severity as keyof typeof severityOrder] - severityOrder[b.severity as keyof typeof severityOrder]
-    );
+router.post(
+  "/repositories/:id/vulnerabilities/scan",
+  authed(async (req, res) => {
+    try {
+      // Verify user owns this repo
+      const repo = await storage.getRepositoryById(
+        parseInt(req.params.id),
+        req.user.id
+      );
+      if (!repo) {
+        return res.status(404).json({ error: "Repository not found" });
+      }
 
-    res.json(allVulns);
-  } catch (err) {
-    console.error("Failed to fetch vulnerabilities:", err);
-    res.status(500).json({ error: "Failed to fetch vulnerabilities" });
-  }
-});
+      // Run the scan function
+      await runVulnerabilityScanForRepository(parseInt(req.params.id));
 
-router.post("/repositories/:id/vulnerabilities/scan", requireAuth, async (req: any, res: any) => {
-  try {
-    // Verify user owns this repo
-    const repo = await storage.getRepositoryById(
-      parseInt(req.params.id),
-      req.user.id
-    );
-    if (!repo) {
-      return res.status(404).json({ error: "Repository not found" });
+      res.json({ message: "Vulnerability scan completed", status: "completed" });
+    } catch (err) {
+      console.error("Failed to scan vulnerabilities:", err);
+      res.status(500).json({ error: "Failed to scan vulnerabilities" });
     }
-
-    // Run the scan function
-    await runVulnerabilityScanForRepository(parseInt(req.params.id));
-
-    res.json({ message: "Vulnerability scan completed", status: "completed" });
-  } catch (err) {
-    console.error("Failed to scan vulnerabilities:", err);
-    res.status(500).json({ error: "Failed to scan vulnerabilities" });
-  }
-});
+  })
+);
 
 // Architecture Routes
-router.get("/repositories/:id/architecture", requireAuth, async (req: any, res: any) => {
-  try {
-    // Verify user owns this repo
-    const repo = await storage.getRepositoryById(
-      parseInt(req.params.id),
-      req.user.id
-    );
-    if (!repo) {
-      return res.status(404).json({ error: "Repository not found" });
-    }
+router.get(
+  "/repositories/:id/architecture",
+  authed(async (req, res) => {
+    try {
+      // Verify user owns this repo
+      const repo = await storage.getRepositoryById(
+        parseInt(req.params.id),
+        req.user.id
+      );
+      if (!repo) {
+        return res.status(404).json({ error: "Repository not found" });
+      }
 
-    const arch = await storage.getArchitectureData(parseInt(req.params.id));
-    res.json(arch);
-  } catch (err) {
-    console.error("Failed to fetch architecture data:", err);
-    res.status(500).json({ error: "Failed to fetch architecture data" });
-  }
-});
+      const arch = await storage.getArchitectureData(parseInt(req.params.id));
+      res.json(arch);
+    } catch (err) {
+      console.error("Failed to fetch architecture data:", err);
+      res.status(500).json({ error: "Failed to fetch architecture data" });
+    }
+  })
+);
 
 router.post(
   "/repositories/:id/architecture/regenerate",
-  requireAuth,
-  async (req: any, res: any) => {
+  authed((_req, res) => {
     // Architecture regeneration is not wired up (architecture.service.ts has no
     // caller). Report 501 honestly rather than a fake "pending" that never
     // completes, so the client doesn't show progress for work that never runs.
     res
       .status(501)
       .json({ error: "Architecture regeneration is not implemented yet" });
-  }
+  })
 );
 
 // Logs Routes
-router.get("/repositories/:id/logs", requireAuth, async (req: any, res: any) => {
-  try {
-    // Verify user owns this repo
-    const repo = await storage.getRepositoryById(
-      parseInt(req.params.id),
-      req.user.id
-    );
-    if (!repo) {
-      return res.status(404).json({ error: "Repository not found" });
-    }
+router.get(
+  "/repositories/:id/logs",
+  authed(async (req, res) => {
+    try {
+      // Verify user owns this repo
+      const repo = await storage.getRepositoryById(
+        parseInt(req.params.id),
+        req.user.id
+      );
+      if (!repo) {
+        return res.status(404).json({ error: "Repository not found" });
+      }
 
-    const limit = parseInt(req.query.limit as string) || 50;
-    const logs = await storage.getRepositoryLogs(parseInt(req.params.id), limit);
-    res.json(logs);
-  } catch (err) {
-    console.error("Failed to fetch logs:", err);
-    res.status(500).json({ error: "Failed to fetch logs" });
-  }
-});
+      const limit = parseInt(req.query.limit as string) || 50;
+      const logs = await storage.getRepositoryLogs(
+        parseInt(req.params.id),
+        limit
+      );
+      res.json(logs);
+    } catch (err) {
+      console.error("Failed to fetch logs:", err);
+      res.status(500).json({ error: "Failed to fetch logs" });
+    }
+  })
+);
 
 // Settings Routes
-router.get("/settings", requireAuth, async (req: any, res: any) => {
-  try {
+router.get(
+  "/settings",
+  authed((_req, res) => {
     res.json({
       syncFrequency: parseInt(process.env.SYNC_INTERVAL_MINUTES || "60"),
     });
-  } catch (err) {
-    console.error("Failed to fetch settings:", err);
-    res.status(500).json({ error: "Failed to fetch settings" });
-  }
-});
+  })
+);
 
-router.post("/settings/github-token", requireAuth, async (req: any, res: any) => {
-  // Per-user GitHub token storage is not implemented — the app uses the
-  // server-wide GITHUB_TOKEN env var. The previous handler replied "Token
-  // saved" without persisting or verifying anything, which was misleading.
-  // Return 501 until real (encrypted, verified) persistence exists.
-  res
-    .status(501)
-    .json({ error: "Saving a per-user GitHub token is not implemented yet" });
-});
+router.post(
+  "/settings/github-token",
+  authed((_req, res) => {
+    // Per-user GitHub token storage is not implemented — the app uses the
+    // server-wide GITHUB_TOKEN env var. The previous handler replied "Token
+    // saved" without persisting or verifying anything, which was misleading.
+    // Return 501 until real (encrypted, verified) persistence exists.
+    res
+      .status(501)
+      .json({ error: "Saving a per-user GitHub token is not implemented yet" });
+  })
+);
 
 export function registerRoutes(app: any) {
   app.use("/api", router);
