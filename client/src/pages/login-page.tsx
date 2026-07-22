@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { csrfHeaders } from "@/lib/csrf";
 
 export default function LoginPage() {
   const [, setLocation] = useLocation();
@@ -12,7 +13,7 @@ export default function LoginPage() {
     try {
       const response = await fetch("/api/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await csrfHeaders()) },
         credentials: "include",
         body: JSON.stringify({ username, password }),
       });

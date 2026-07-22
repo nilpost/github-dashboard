@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { csrfHeaders } from "@/lib/csrf";
 
 export default function SettingsPage() {
   const [githubToken, setGithubToken] = useState("");
@@ -10,7 +11,7 @@ export default function SettingsPage() {
     try {
       const response = await fetch("/api/settings/github-token", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await csrfHeaders()) },
         credentials: "include",
         body: JSON.stringify({ githubToken, syncIntervalMinutes: syncInterval }),
       });
@@ -31,6 +32,7 @@ export default function SettingsPage() {
     try {
       const response = await fetch("/api/repositories/sync", {
         method: "POST",
+        headers: await csrfHeaders(),
         credentials: "include",
       });
 

@@ -14,20 +14,31 @@ interface DependencyData {
   isDevelopment: boolean;
 }
 
-function parseVersionRange(versionRange: string): string {
+// A bare "major.minor.patch" version, e.g. the "1.2.3" pulled out of "^1.2.3".
+const BASE_VERSION_RE = /^\d+\.\d+\.\d+$/;
+
+export function parseVersionRange(versionRange: string): string {
   // Extract the base version from semver ranges like "^1.0.0", "~2.1.0", ">=3.0.0", etc
   const match = versionRange.match(/\d+\.\d+\.\d+/);
   return match ? match[0] : versionRange;
 }
 
-function compareVersions(current: string, latest: string): boolean {
-  // Simple semver comparison - returns true if current < latest
-  const currentParts = parseVersionRange(current)
-    .split(".")
-    .map(Number);
-  const latestParts = parseVersionRange(latest)
-    .split(".")
-    .map(Number);
+export function compareVersions(current: string, latest: string): boolean {
+  // Simple semver comparison - returns true if current < latest.
+  const currentBase = parseVersionRange(current);
+  const latestBase = parseVersionRange(latest);
+
+  // If either side has no extractable numeric version (e.g. "workspace:*",
+  // "file:../local", a git URL), we cannot meaningfully compare them. Bail out
+  // as "not outdated" rather than coercing the missing parts to 0 (which would
+  // make "workspace:*" look like 0.0.0 and get flagged outdated against any
+  // real release — a false positive).
+  if (!BASE_VERSION_RE.test(currentBase) || !BASE_VERSION_RE.test(latestBase)) {
+    return false;
+  }
+
+  const currentParts = currentBase.split(".").map(Number);
+  const latestParts = latestBase.split(".").map(Number);
 
   for (let i = 0; i < Math.max(currentParts.length, latestParts.length); i++) {
     const curr = currentParts[i] || 0;
@@ -69,35 +80,58 @@ class DependencyService {
     return dependencies;
   }
 
+  // Cap on concurrent npm-registry lookups. Running them one-at-a-time is slow
+  // for large manifests; firing all at once would hammer the registry and risk
+  // rate limits. A small pool balances both.
+  private static readonly REGISTRY_CONCURRENCY = 5;
+
   private async processDependencies(
     deps: PackageJsonDeps,
     isDevelopment: boolean
   ): Promise<DependencyData[]> {
+    const entries = Object.entries(deps);
     const results: DependencyData[] = [];
 
-    for (const [name, version] of Object.entries(deps)) {
-      try {
-        const latestVersion = await this.getLatestVersion(name);
-        const currentVersion = parseVersionRange(version);
-        const isOutdated =
-          latestVersion && compareVersions(currentVersion, latestVersion);
+    // Process in fixed-size batches so at most REGISTRY_CONCURRENCY requests
+    // are in flight at once.
+    for (
+      let i = 0;
+      i < entries.length;
+      i += DependencyService.REGISTRY_CONCURRENCY
+    ) {
+      const batch = entries.slice(
+        i,
+        i + DependencyService.REGISTRY_CONCURRENCY
+      );
 
-        results.push({
-          dependencyName: name,
-          currentVersion: version,
-          latestVersion,
-          isOutdated: isOutdated || false,
-          isDevelopment,
-        });
-      } catch (error) {
-        // If we can't fetch latest version, still record the dependency
-        results.push({
-          dependencyName: name,
-          currentVersion: version,
-          isOutdated: false,
-          isDevelopment,
-        });
-      }
+      const batchResults = await Promise.all(
+        batch.map(async ([name, version]) => {
+          try {
+            const latestVersion = await this.getLatestVersion(name);
+            const isOutdated =
+              latestVersion &&
+              compareVersions(parseVersionRange(version), latestVersion);
+
+            return {
+              dependencyName: name,
+              currentVersion: version,
+              latestVersion,
+              isOutdated: isOutdated || false,
+              isDevelopment,
+            };
+          } catch (error) {
+            // If we can't fetch latest version, still record the dependency
+            return {
+              dependencyName: name,
+              currentVersion: version,
+              isOutdated: false,
+              isDevelopment,
+            };
+          }
+        })
+      );
+
+      results.push(...batchResults);
     }
 
     return results;

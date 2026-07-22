@@ -111,6 +111,19 @@ export async function getUnusedDependenciesByRepo(repositoryId: number) {
   });
 }
 
+// Eager-load each repo's unused dependencies in a single query. Used by the
+// aggregate /dependencies/unused endpoint so it doesn't fire one follow-up
+// query per repository (N+1). Kept separate from getUserRepositories so the
+// other endpoints that call that don't pay for this join.
+export async function getUserRepositoriesWithUnusedDependencies(userId: number) {
+  return await db.query.repositories.findMany({
+    where: eq(repositories.userId, userId),
+    with: {
+      unusedDependencies: true,
+    },
+  });
+}
+
 export async function upsertUnusedDependency(data: InsertUnusedDependency) {
   const existing = await db.query.unusedDependencies.findFirst({
     where: and(

@@ -1,12 +1,17 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
+import { csrfHeaders } from "@/lib/csrf";
 
 export default function ProfilePage() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
 
   async function handleLogout() {
-    await fetch("/api/logout", { method: "POST", credentials: "include" });
+    await fetch("/api/logout", {
+      method: "POST",
+      headers: await csrfHeaders(),
+      credentials: "include",
+    });
     setLocation("/login");
   }
 

@@ -1,6 +1,6 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { scryptSync, randomBytes } from "crypto";
+import { scryptSync, randomBytes, timingSafeEqual } from "crypto";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -16,12 +16,22 @@ function hashPassword(password: string, salt?: Buffer): string {
   return `${salt.toString("hex")}:${hash.toString("hex")}`;
 }
 
-// Verify password
+// Verify password. Uses a constant-time comparison so an attacker cannot use
+// response-timing differences to recover the stored hash byte by byte.
 function verifyPassword(password: string, hash: string): boolean {
   const [saltHex, hashHex] = hash.split(":");
+  if (!saltHex || !hashHex) {
+    return false;
+  }
   const salt = Buffer.from(saltHex, "hex");
-  const computedHash = scryptSync(password, salt, 32).toString("hex");
-  return computedHash === hashHex;
+  const computed = scryptSync(password, salt, 32);
+  const stored = Buffer.from(hashHex, "hex");
+  // timingSafeEqual requires equal-length buffers; a length mismatch means the
+  // stored hash is malformed, so treat it as a failed verification.
+  if (computed.length !== stored.length) {
+    return false;
+  }
+  return timingSafeEqual(computed, stored);
 }
 
 // Passport LocalStrategy
@@ -65,9 +75,12 @@ passport.deserializeUser(async (id: number, done) => {
 });
 
 // Strip sensitive fields (password hash) before sending a user to the client.
-function sanitizeUser<T extends { password?: string }>(user: T): Omit<T, "password"> {
-  const { password, ...safe } = user;
-  return safe;
+// Accepts any object: the runtime user (from Passport's deserialize) carries a
+// password hash even though the AuthUser type doesn't declare one, so we strip
+// it defensively regardless of the static shape.
+function sanitizeUser<T extends object>(user: T): Omit<T, "password"> {
+  const { password, ...safe } = user as Record<string, unknown>;
+  return safe as Omit<T, "password">;
 }
 
 export { passport, hashPassword, verifyPassword, sanitizeUser };

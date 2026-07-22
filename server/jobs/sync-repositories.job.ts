@@ -22,7 +22,16 @@ export async function initializeSyncJobs() {
   console.log(`Sync job scheduled with pattern: ${cronSchedule}`);
 }
 
+// Guard against a slow sync overlapping the next scheduled tick, which would
+// run two full syncs against the same rows concurrently.
+let syncRunning = false;
+
 export async function runFullSync() {
+  if (syncRunning) {
+    console.warn("Scheduled sync already running; skipping this tick");
+    return;
+  }
+  syncRunning = true;
   try {
     // Get all users (MVP: single user, but structure for multi-user)
     const allUsers = await db.query.users.findMany();
@@ -48,6 +57,8 @@ export async function runFullSync() {
     }
   } catch (err) {
     console.error("Full sync failed:", err);
+  } finally {
+    syncRunning = false;
   }
 }
 
