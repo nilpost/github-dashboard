@@ -9,5 +9,17 @@
   },
   "enabledPlugins": {
     "studio-core@claude-code-studio": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'studio: at session start, run the recall-learnings skill to surface any prior lessons relevant to this task before beginning work (studio-core incremental-learning loop).'"
+          }
+        ]
+      }
+    ]
   }
 }
