@@ -49,7 +49,8 @@ scripts/             Deployment automation (see DEPLOY.md)
 
 Required: `DATABASE_URL`, `SESSION_SECRET` (32+ chars), `GITHUB_TOKEN` (`ghp_…`,
 scopes: repo + read:user), `NODE_ENV`. Optional: `PORT` (default 5000; prod uses
-8000), `SYNC_INTERVAL_MINUTES` (60), `LOG_LEVEL` (info).
+8000), `SYNC_INTERVAL_MINUTES` (60), `LOG_LEVEL` (info),
+`STUDIO_OPS_REPO` / `STUDIO_OPS_PATH` (portfolio cockpit — see below).
 
 Copy `.env.production.template` → `.env.production` (gitignored) and fill it in.
 Generate a secret: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
@@ -76,6 +77,29 @@ account, a Postgres URL, and a GitHub token — cannot be completed without them
 type-check → build → `db:push` → `npm test`, against a Postgres service. Keep it
 green. `package-lock.json` is gitignored, so CI uses `npm install`, not `npm ci`.
 
+## You cannot `npm install` from the Google Drive path
+
+This repo lives under `G:\My Drive\...`. **`npm install` fails there** — it errors with
+`EBADF: bad file descriptor, write` partway through, then rolls back, leaving a
+`node_modules/` that exists but has an empty `.bin/` and no resolvable packages. The
+Drive sync client does not provide the file semantics npm needs, the same root cause
+that corrupted this workspace's git object stores.
+
+Symptoms that mean you have hit this: `'tsc' is not recognized`, or
+`Cannot find module 'typescript/package.json'` when `node_modules/typescript` clearly
+exists. Note that `npm install | tail` will report success — the exit status comes from
+the pipe, not from npm — so check the log, not the exit code.
+
+**Workaround: clone somewhere off the Drive and work there.**
+
+```bash
+git clone "G:/My Drive/Claude-Sync/githubdashboard/github-dashboard" C:/dev/github-dashboard
+cd C:/dev/github-dashboard && npm install     # ~2 min, vs. failing outright on the Drive
+```
+
+Verified 2026-07-30: install, `npm run check`, `npm run build`, and the unit suite all
+pass on local disk and none of them can run on the Drive path.
+
 ## Conventions & gotchas (things that will bite a fresh session)
 
 - **ESM project.** Standalone Node scripts must be `.cjs` (e.g. `scripts/*.cjs`);
@@ -92,6 +116,28 @@ green. `package-lock.json` is gitignored, so CI uses `npm install`, not `npm ci`
   JSON 404, not the SPA HTML fallback.
 - **Secrets**: `.env`, `.env.production`, `.env.staging` are gitignored. Only the
   placeholder `.env.production.template` is committed.
+
+## Portfolio cockpit (`/portfolio`)
+
+A second view on top of the repo dashboard: **what should I work on next, and what
+is blocked?** It renders the studio's portfolio — stages, next gates, blockers, WIP
+limit, kill proposals, and revenue candidates.
+
+- `server/services/portfolio.service.ts` fetches `portfolio.json` from the ops repo
+  via the existing `githubService.getFileContent`, validates it, and caches for 5
+  minutes. `GET /api/portfolio`; `POST /api/portfolio/refresh` busts the cache.
+- `client/src/pages/portfolio-page.tsx` renders it.
+
+**There is deliberately no `portfolio_projects` table.** `portfolio.json` in the ops
+repo is canonical; mirroring it into Postgres would create a second source of truth
+that drifts, and it is ~15 rows. This service is a read-through view and never
+writes back. Do not "improve" this by adding a table without a reason that
+outweighs the drift.
+
+Unconfigured is a **normal state**, not an error: with `STUDIO_OPS_REPO` unset the
+endpoint returns 200 with `configured: false` and a human-readable reason, and the
+page renders that reason. Same for a missing file, an unparseable file, or a token
+without access. Nothing here may take the dashboard down.
 
 ## Reusable capabilities (studio-core plugin)
 
