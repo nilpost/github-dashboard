@@ -3,6 +3,7 @@ import rateLimit from "express-rate-limit";
 import { passport, hashPassword, sanitizeUser } from "./auth";
 import * as storage from "./storage";
 import { syncService } from "./services/sync.service";
+import { portfolioService } from "./services/portfolio.service";
 import { loginSchema, registerSchema } from "@shared/schema";
 import { ZodError } from "zod";
 import { eq } from "drizzle-orm";
@@ -461,6 +462,32 @@ router.post(
     res
       .status(501)
       .json({ error: "Saving a per-user GitHub token is not implemented yet" });
+  })
+);
+
+// Portfolio Routes
+//
+// Reads the studio's portfolio.json from the ops repo. That file is canonical;
+// this endpoint is a view over it and never writes back. An unconfigured or
+// unreachable ops repo returns 200 with `configured: false` and a reason —
+// it is a normal state, not a server error, and the client renders the reason.
+router.get(
+  "/portfolio",
+  authed(async (_req, res) => {
+    try {
+      res.json(await portfolioService.getPortfolio());
+    } catch (err) {
+      console.error("Failed to fetch portfolio:", err);
+      res.status(500).json({ error: "Failed to fetch portfolio" });
+    }
+  })
+);
+
+router.post(
+  "/portfolio/refresh",
+  authed(async (_req, res) => {
+    portfolioService.clearCache();
+    res.json(await portfolioService.getPortfolio());
   })
 );
 
